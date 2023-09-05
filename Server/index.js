@@ -1,8 +1,6 @@
 const express = require("express");
 const { google } = require("googleapis");
-const twilio = require("twilio");
 const nodemailer = require("nodemailer");
-const nlp = require("compromise");
 const dotenv = require("dotenv");
 dotenv.config();
 const cors = require("cors");
@@ -23,11 +21,6 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.REDIRECT_URL
 );
 
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
-
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -35,6 +28,15 @@ const transporter = nodemailer.createTransport({
     pass: process.env.PASSWORD,
   },
 });
+
+const counselorEmails = {
+  counselor1: process.env.COUNSELOR1_EMAIL,
+  counselor2: process.env.COUNSELOR2_EMAIL,
+  counselor3: process.env.COUNSELOR3_EMAIL,
+  counselor4: process.env.COUNSELOR4_EMAIL,
+  counselor5: process.env.COUNSELOR5_EMAIL,
+};
+
 
 const counselors = [
   "counselor1",
@@ -170,47 +172,63 @@ function formatTime(date) {
     minutes < 10 ? "0" + minutes : minutes
   }`;
 }
-
+function validateEmail(email) {
+  var re = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+  return re.test(email);
+}
 app.post("/book-appointment", async (req, res) => {
   try {
-    const { startTime, endTime, counselor } = req.body;
+    const { startTime, endTime, counselor, userEmail } = req.body;
+    if (!validateEmail(userEmail)) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+    // Event creation for Google Calendar
     const event = {
       summary: "Appointment",
       start: {
-        dateTime: req.body.startTime,
+        dateTime: startTime,
         timeZone: "Asia/Kolkata",
       },
       end: {
-        dateTime: req.body.endTime,
+        dateTime: endTime,
         timeZone: "Asia/Kolkata",
       },
     };
 
-    await calendar.events.insert({
+    const eventResponse = await calendar.events.insert({
       auth: counselors[counselor].oauth2Client,
       calendarId: counselorCalendarIDs[counselor],
       resource: event,
     });
 
+    const eventStart = new Date(eventResponse.data.start.dateTime);
+    const eventEnd = new Date(eventResponse.data.end.dateTime);
+
+     // Generate unique Google Meet link
+     const meetLink = `https://meet.google.com/${eventResponse.data.id}`;
+
+     // Format time for email content
+     const formattedStartTime = formatTime(eventStart);
+     const formattedEndTime = formatTime(eventEnd);
+     
+     // Email sending after successful booking
+     const mailOptions = {
+      from: process.env.EMAIL,
+      to: [userEmail, counselorEmails[counselor]],
+      subject: "Appointment Confirmation",
+      text: `Hello,\n\nYour appointment has been booked with the counselor from ${formattedStartTime} to ${formattedEndTime}. You can join the meeting using the following link: ${meetLink}\n\nThank you.`,
+    };
+     // Use the updated transporter with OAuth2 credentials to send the email
+     await transporter.sendMail(mailOptions);
+     console.log(`Email sent to ${userEmail} and ${counselorEmails[counselor]}`);
+
     res.json({ message: "Appointment booked successfully" });
   } catch (error) {
+    console.error("Error booking the appointment:", error);
     res.status(500).json({ error: error.message });
-  }
+}
 });
 
-app.post("/send-message", async (req, res) => {
-  try {
-    const message = await twilioClient.messages.create({
-      body: req.body.message,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: req.body.phoneNumber,
-    });
-
-    res.json({ message: "Message sent successfully" });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 app.post("/send-email", async (req, res) => {
   try {

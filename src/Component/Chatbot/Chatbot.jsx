@@ -19,6 +19,8 @@ function ChatBot() {
   const [selectedCounselor, setSelectedCounselor] = useState("");
   const [timeRange, setTimeRange] = useState("");
   const [userEmailAddress, setUserEmailAddress] = useState("");
+  const [startTime, setStartTime] = useState(null);
+  const [endTime, setEndTime] = useState(null);
 
   const counselors = [
     "counselor1",
@@ -39,6 +41,11 @@ function ChatBot() {
   useEffect(() => {
     addResponseMessage("Hey! What's your name?");
   }, []);
+
+  function validateEmail(email) {
+    var re = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
+    return re.test(email);
+  }
 
   const handleNewUserMessage = async (newMessage) => {
     try {
@@ -105,17 +112,33 @@ function ChatBot() {
         const hour = parseInt(timeParts[0]);
         const minute = parseInt(timeParts[1]);
 
-        const startTime = new Date(date);
-        startTime.setHours(hour, minute);
-        const endTime = new Date(startTime);
-        endTime.setHours(endTime.getHours() + 1);
+        const start = new Date(date);
+        start.setHours(hour, minute);
+        const end = new Date(start);
+        end.setHours(end.getHours() + 1);
 
+        setStartTime(start); // Set startTime
+        setEndTime(end); // Set endTime
+
+        addResponseMessage(
+          "Thank you! Please provide your email address so we can send you a confirmation."
+        );
+        setStage(4);
+      } else if (stage === 4) {
+        if (!validateEmail(newMessage)) {
+          addResponseMessage(
+            "Invalid email format. Please provide a correct email address."
+          );
+          return;
+        }
+        setUserEmailAddress(newMessage);
         try {
           await axios.post("http://localhost:5000/book-appointment", {
             startTime: startTime.toISOString(),
             endTime: endTime.toISOString(),
             counselor: selectedCounselor,
             calendarID: counselorCalendarIDs[selectedCounselor],
+            userEmail: newMessage,
           });
           addResponseMessage("Thank you! Your appointment has been booked.");
 
@@ -124,6 +147,7 @@ function ChatBot() {
           setSelectedCounselor("");
           setShowCalendar(false);
           setTimeRange("");
+          setUserEmailAddress(""); // Resetting the email address
         } catch (error) {
           console.error(error);
           addResponseMessage(
