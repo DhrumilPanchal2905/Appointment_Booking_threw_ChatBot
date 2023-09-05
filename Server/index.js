@@ -220,15 +220,25 @@ app.post("/book-appointment", async (req, res) => {
       const formattedStartTime = formatTime(eventStart);
       const formattedEndTime = formatTime(eventEnd);
 
-      const mailOptions = {
-          from: process.env.EMAIL,
-          to: [userEmail, counselorEmails[counselor]],
-          subject: "Appointment Confirmation",
-          text: `Hello,\n\nYour appointment has been booked with the counselor from ${formattedStartTime} to ${formattedEndTime}. You can join the meeting using the following link: ${meetLink}\n\nThank you.`,
-      };
+      // Email for the User
+    const userMailOptions = {
+      from: process.env.EMAIL,
+      to: userEmail,
+      subject: "Appointment Confirmation",
+      text: `Hello,\n\nYour appointment has been booked with the counselor from ${formattedStartTime} to ${formattedEndTime}. You can join the meeting using the following link: ${meetLink}\n\nThank you.`,
+    };
+    
+    // Email for the Counselor
+    const counselorMailOptions = {
+      from: process.env.EMAIL,
+      to: counselorEmails[counselor],
+      subject: "Appointment Confirmation",
+      text: `Hello,\n\nYour appointment has been booked with the ${userEmail} from ${formattedStartTime} to ${formattedEndTime}. You can join the meeting using the following link: ${meetLink}\n\nThank you.`,
+    };
 
-      await transporter.sendMail(mailOptions);
-      console.log(`Email sent to ${userEmail} and ${counselorEmails[counselor]}`);
+    await transporter.sendMail(userMailOptions);
+    await transporter.sendMail(counselorMailOptions);
+    console.log(`Email sent to ${userEmail} and ${counselorEmails[counselor]}`);
 
       res.json({ message: "Appointment booked successfully" });
   } catch (error) {
