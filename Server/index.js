@@ -178,56 +178,65 @@ function validateEmail(email) {
 }
 app.post("/book-appointment", async (req, res) => {
   try {
-    const { startTime, endTime, counselor, userEmail } = req.body;
-    if (!validateEmail(userEmail)) {
-      return res.status(400).json({ error: "Invalid email format" });
-    }
-    // Event creation for Google Calendar
-    const event = {
-      summary: "Appointment",
-      start: {
-        dateTime: startTime,
-        timeZone: "Asia/Kolkata",
-      },
-      end: {
-        dateTime: endTime,
-        timeZone: "Asia/Kolkata",
-      },
-    };
+      const { startTime, endTime, counselor, userEmail } = req.body;
+      if (!validateEmail(userEmail)) {
+          return res.status(400).json({ error: "Invalid email format" });
+      }
 
-    const eventResponse = await calendar.events.insert({
-      auth: counselors[counselor].oauth2Client,
-      calendarId: counselorCalendarIDs[counselor],
-      resource: event,
-    });
+      // Event creation for Google Calendar with conferencing
+      const event = {
+          summary: "Appointment",
+          start: {
+              dateTime: startTime,
+              timeZone: "Asia/Kolkata",
+          },
+          end: {
+              dateTime: endTime,
+              timeZone: "Asia/Kolkata",
+          },
+          conferenceData: {
+              createRequest: {
+                  requestId: new Date().toISOString(),
+                  conferenceSolutionKey: {
+                      type: "hangoutsMeet"
+                  }
+              }
+          }
+      };
 
-    const eventStart = new Date(eventResponse.data.start.dateTime);
-    const eventEnd = new Date(eventResponse.data.end.dateTime);
+      const eventResponse = await calendar.events.insert({
+          auth: counselors[counselor].oauth2Client,
+          calendarId: counselorCalendarIDs[counselor],
+          resource: event,
+          conferenceDataVersion: 1
+      });
 
-     // Generate unique Google Meet link
-     const meetLink = `https://meet.google.com/${eventResponse.data.id}`;
+      const eventStart = new Date(eventResponse.data.start.dateTime);
+      const eventEnd = new Date(eventResponse.data.end.dateTime);
 
-     // Format time for email content
-     const formattedStartTime = formatTime(eventStart);
-     const formattedEndTime = formatTime(eventEnd);
-     
-     // Email sending after successful booking
-     const mailOptions = {
-      from: process.env.EMAIL,
-      to: [userEmail, counselorEmails[counselor]],
-      subject: "Appointment Confirmation",
-      text: `Hello,\n\nYour appointment has been booked with the counselor from ${formattedStartTime} to ${formattedEndTime}. You can join the meeting using the following link: ${meetLink}\n\nThank you.`,
-    };
-     // Use the updated transporter with OAuth2 credentials to send the email
-     await transporter.sendMail(mailOptions);
-     console.log(`Email sent to ${userEmail} and ${counselorEmails[counselor]}`);
+      // Extract Google Meet link from event response
+      const meetLink = eventResponse.data.hangoutLink;
 
-    res.json({ message: "Appointment booked successfully" });
+      const formattedStartTime = formatTime(eventStart);
+      const formattedEndTime = formatTime(eventEnd);
+
+      const mailOptions = {
+          from: process.env.EMAIL,
+          to: [userEmail, counselorEmails[counselor]],
+          subject: "Appointment Confirmation",
+          text: `Hello,\n\nYour appointment has been booked with the counselor from ${formattedStartTime} to ${formattedEndTime}. You can join the meeting using the following link: ${meetLink}\n\nThank you.`,
+      };
+
+      await transporter.sendMail(mailOptions);
+      console.log(`Email sent to ${userEmail} and ${counselorEmails[counselor]}`);
+
+      res.json({ message: "Appointment booked successfully" });
   } catch (error) {
-    console.error("Error booking the appointment:", error);
-    res.status(500).json({ error: error.message });
-}
+      console.error("Error booking the appointment:", error);
+      res.status(500).json({ error: error.message });
+  }
 });
+
 
 
 app.post("/send-email", async (req, res) => {
